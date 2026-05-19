@@ -1,0 +1,47 @@
+app_name: all-dev-n8n
+app_version: "2.21.0"
+description: "n8n is a fair-code workflow automation platform that combines the flexibility of code with the speed of no-code. It enables technical teams to build powerful automations, AI agent workflows based on LangChain, and integrate with 400+ services while maintaining full control over data and deployments. Features enterprise-grade security, SSO, and self-hosting capabilities."
+
+# CT Engine settings
+run_command: "node $SNAP/bin/n8n start --port ${N8N_PORT:-5678}"
+
+# Callbacks
+periodic_event: "message"
+initial_event: "message_initial"
+interval: 60
+
+# Configuration Schema
+config:
+  example-param:
+    visibility: user
+    required: true
+    type: string
+    default: "default-value"
+    description: "An example parameter"
+  port:
+    visibility: user
+    required: true
+    type: number
+    default: 5678
+    description: "The port n8n listens on for HTTP/HTTPS traffic."
+  ct-callback-url:
+    visibility: ct
+    required: false
+    type: string
+    description: "Control Tower engine callback URL for deployment status and health checks."
+  ct-snap-name:
+    visibility: ct
+    required: false
+    type: string
+    description: "Control Tower engine snap identifier for this deployment."
+  ct-node-id:
+    visibility: ct
+    required: false
+    type: string
+    description: "Unique identifier for the node within the Control Tower cluster."
+  ct-deployment-id:
+    visibility: ct
+    required: false
+    type: string
+    description: "Control Tower deployment identifier for tracking and management."
+
