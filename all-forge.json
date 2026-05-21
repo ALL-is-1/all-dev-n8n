@@ -10,8 +10,6 @@
         "destructive_mode": true
     },
     "override_build": [
-        "git clone $ALL_FORGE_SOURCE_URL src",
-        "cd src",
         "pnpm install --frozen-lockfile",
         "node scripts/build-n8n.mjs",
         "cp -r * $SNAPCRAFT_PART_INSTALL/"

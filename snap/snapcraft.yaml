@@ -1,25 +1,43 @@
 name: all-dev-n8n
 base: core24
 version: "2.21.0"
-summary: Secure workflow automation platform for technical teams with 400+ integrations and native AI capabilities.
+summary: "Secure workflow automation platform for technical teams with 400+ integrati.."
 description: |
   n8n is a fair-code workflow automation platform that combines the flexibility of code with the speed of no-code. It enables technical teams to build powerful automations, AI agent workflows based on LangChain, and integrate with 400+ services while maintaining full control over data and deployments. Features enterprise-grade security, SSO, and self-hosting capabilities.
 
 grade: stable
 confinement: strict
 
-plugs:
-  network:
-  network-bind:
+
+
+
+
+
+
+
+
+
+
 
 apps:
   daemon:
     command: bin/ct-engine run
-    daemon: simple
+    daemon: simple                  # Optimized for headless background services
     restart-condition: always
+
     plugs:
+
       - network
+
       - network-bind
+
+
+
+    environment:
+      SNAP_USER_DATA: "$SNAP_DATA"
+      SNAP_USER_COMMON: "$SNAP_COMMON"
+
+
 
 
 parts:
@@ -28,24 +46,51 @@ parts:
     plugin: nil
     source: https://github.com/n8n-io/n8n.git
     source-type: git
+
+    
+    # Common environment settings for production builds
+    build-environment:
+      - PATH: "$SNAPCRAFT_STAGE/usr/bin:$PATH"
+      - LD_LIBRARY_PATH: "$SNAPCRAFT_STAGE/usr/lib/$CRAFT_ARCH_TRIPLET_BUILD_FOR:${LD_LIBRARY_PATH:-}"
+
+
     build-packages:
+
       - nodejs
+
       - npm
+
+
+
     stage-packages:
+
       - ca-certificates
+
+
+
+
+
+
+
+
     override-build: |
-      git clone $ALL_FORGE_SOURCE_URL src
-      cd src
+
       pnpm install --frozen-lockfile
+
       node scripts/build-n8n.mjs
+
       cp -r * $SNAPCRAFT_PART_INSTALL/
+
+
+
+
+
 
 
   # Part 2: CT Engine
   ct-engine:
     plugin: dump
-    source: https://github.com/Half-Silver/all_snap_plugin.git
-    source-type: git
+    source: .
     organize:
       src/ct_engine.py: bin/ct-engine
       snap/hooks/configure: snap/hooks/configure
