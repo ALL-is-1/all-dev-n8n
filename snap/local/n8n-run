@@ -1,0 +1,42 @@
+#!/bin/bash
+# Launcher for n8n.
+#
+# Relocates n8n's entire state tree (SQLite DB, encryption key, binary data,
+# logs) into the snap's writable common dir and starts the bundled Node 22.
+set -e
+
+# ---- Writable state ($SNAP_COMMON/.n8n) -----------------------------------
+export HOME="${SNAP_COMMON}"
+export N8N_USER_FOLDER="${SNAP_COMMON}"   # n8n keeps everything under <folder>/.n8n
+mkdir -p "${N8N_USER_FOLDER}/.n8n"
+
+# ---- Network / listener ----------------------------------------------------
+PORT="$(snapctl get port 2>/dev/null || true)"
+export N8N_PORT="${PORT:-5678}"
+export N8N_LISTEN_ADDRESS="0.0.0.0"
+export N8N_PROTOCOL="http"
+
+# Serve the auth cookie over plain HTTP so login works on a LAN without TLS.
+# Put a TLS-terminating reverse proxy in front for remote/internet exposure.
+export N8N_SECURE_COOKIE="false"
+
+# ---- Behaviour -------------------------------------------------------------
+export N8N_RUNNERS_ENABLED="true"          # task runners (Code node) — internal mode
+export DB_TYPE="sqlite"                      # self-contained default
+export GENERIC_TIMEZONE="${TZ:-UTC}"
+export NODE_ENV="production"
+export N8N_DIAGNOSTICS_ENABLED="false"       # no telemetry
+export N8N_PERSONALIZATION_ENABLED="false"
+export N8N_HIRING_BANNER_ENABLED="false"
+export N8N_VERSION_NOTIFICATIONS_ENABLED="false"
+
+# ---- Runtime paths ---------------------------------------------------------
+export PATH="${SNAP}/usr/lib/node/bin:${SNAP}/opt/n8n/bin:${SNAP}/usr/bin:${SNAP}/bin:${PATH}"
+export NODE_PATH="${SNAP}/opt/n8n/lib/node_modules"
+# TLS trust store for n8n's outbound HTTPS and the bundled node.
+export NODE_EXTRA_CA_CERTS="${SNAP}/etc/ssl/certs/ca-certificates.crt"
+
+exec "${SNAP}/usr/lib/node/bin/node" \
+  "${SNAP}/opt/n8n/lib/node_modules/n8n/bin/n8n" start
+
+# Made with Bob

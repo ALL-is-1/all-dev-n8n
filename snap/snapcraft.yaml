@@ -1,115 +1,163 @@
 name: all-dev-n8n
 base: core24
-version: "2.21.0"
-summary: "Secure workflow automation platform for technical teams with 400+ integrati.."
+version: '2.23.4'
+summary: Secure, AI-native workflow automation for technical teams.
 description: |
-  n8n is a fair-code workflow automation platform that combines the flexibility of code with the speed of no-code. It enables technical teams to build powerful automations, AI agent workflows based on LangChain, and integrate with 400+ services while maintaining full control over data and deployments. Features enterprise-grade security, SSO, and self-hosting capabilities.
+  n8n is a workflow automation platform that lets you connect anything to
+  everything: 400+ integrations, native AI capabilities, and a fair-code
+  license. Build flexible workflows with a visual editor and code when you
+  need it (JavaScript/Python in the Code node).
+
+  This snap is fully self-contained: it bundles Node.js 22 (n8n requires
+  Node >=22.22) and installs the official n8n npm release. All state — the
+  SQLite database, the credential-encryption key, binary data and logs —
+  lives under the snap's common data dir (`$SNAP_COMMON/.n8n`); nothing is
+  written outside the snap.
+
+  n8n listens on 0.0.0.0:5678 by default. Change the port with:
+    sudo snap set all-dev-n8n port=5679
+
+  Open the editor at http://<host>:5678 and create the owner account on first
+  run. (Auth cookies are served over plain HTTP for LAN use; put a TLS reverse
+  proxy in front for remote access.)
 
 grade: stable
 confinement: strict
+# xz compresses the (node_modules-heavy) snap ~2x better than lzo.
+compression: xz
 
+icon: snap/gui/icon.png
 
+# n8n ships under the fair-code "Sustainable Use License" (source-available, not
+# OSI/SPDX). snapcraft validates `license` as an SPDX expression, so use the
+# accepted catch-all for non-OSS. See LICENSE upstream for the real terms.
+license: Proprietary
 
+website: https://n8n.io
+source-code: https://github.com/n8n-io/n8n
+issues: https://github.com/n8n-io/n8n/issues
+contact: https://github.com/Half-Silver
 
+# amd64 only: the bundled Node tarball and several n8n native deps
+# (better-sqlite3 prebuilds) are wired for linux-x64.
+platforms:
+  amd64:
 
-
-
-
-
-
-
+lint:
+  ignore:
+    - library
 
 apps:
-  daemon:
-    command: bin/ct-engine run
-    daemon: simple                  # Optimized for headless background services
+  n8n:
+    command: bin/n8n-run
+    daemon: simple
+    install-mode: enable
     restart-condition: always
-
     plugs:
+      - network          # outbound HTTP from workflow nodes
+      - network-bind     # serve the editor/API/webhooks on 5678
+      - home             # read/write files for the local-filesystem nodes
+      - removable-media  # optional: workflows that touch external storage
 
+  # Control Tower integration sidecar. Runs alongside n8n (it does not manage
+  # it): validates/persists the config CT pushes via `snap set` and streams
+  # status callbacks to ct-callback-url. Driven by ct-engine/plugin.yaml.
+  ct-engine:
+    command: bin/ct-engine-run run
+    daemon: simple
+    install-mode: enable
+    restart-condition: always
+    plugs:
       - network
-
       - network-bind
 
-
-
-    environment:
-      SNAP_USER_DATA: "$SNAP_DATA"
-      SNAP_USER_COMMON: "$SNAP_COMMON"
-
-
-
+# CT Engine lifecycle hooks need network to send update/stop callbacks to
+# Control Tower under strict confinement. (configure needs no network — it only
+# persists config and restarts services via snapctl.)
+hooks:
+  pre-refresh:
+    plugs: [network]
+  post-refresh:
+    plugs: [network]
+  remove:
+    plugs: [network]
 
 parts:
-  # Part 1: Upstream application
-  all-dev-n8n:
+  # ---- Bundled Node.js 22 runtime -----------------------------------------
+  # core24 (Ubuntu 24.04) apt ships Node 18; n8n requires >=22.22.
+  node:
     plugin: nil
-    source: https://github.com/n8n-io/n8n.git
-    source-type: git
-
-    
-    # Common environment settings for production builds
-    build-environment:
-      - PATH: "$SNAPCRAFT_STAGE/usr/bin:$PATH"
-      - LD_LIBRARY_PATH: "$SNAPCRAFT_STAGE/usr/lib/$CRAFT_ARCH_TRIPLET_BUILD_FOR:${LD_LIBRARY_PATH:-}"
-
-
     build-packages:
-
-      - nodejs
-
-      - npm
-
-
-
-    stage-packages:
-
+      - curl
       - ca-certificates
-
-
-
-
-
-
-
-
+      - xz-utils
     override-build: |
+      craftctl default
+      NODE_VERSION="v22.22.3"
+      URL="https://nodejs.org/dist/${NODE_VERSION}/node-${NODE_VERSION}-linux-x64.tar.xz"
+      echo "Downloading Node ${NODE_VERSION} ..."
+      curl -fSL --retry 5 --retry-delay 5 --retry-all-errors -o /tmp/node.tar.xz "${URL}"
+      mkdir -p "${CRAFT_PART_INSTALL}/usr/lib/node"
+      tar -xJf /tmp/node.tar.xz -C "${CRAFT_PART_INSTALL}/usr/lib/node" --strip-components=1
+      rm -f /tmp/node.tar.xz
+      "${CRAFT_PART_INSTALL}/usr/lib/node/bin/node" --version
 
-      pnpm install --frozen-lockfile
+  # ---- n8n (official npm release) -----------------------------------------
+  n8n:
+    after:
+      - node
+    plugin: nil
+    build-packages:
+      - python3
+      - build-essential   # node-gyp fallback for any dep without a prebuild
+      - ca-certificates
+    build-environment:
+      - NODE_OPTIONS: '--max-old-space-size=4096'
+    override-build: |
+      craftctl default
+      export PATH="${CRAFT_STAGE}/usr/lib/node/bin:${PATH}"
+      # Harden npm against flaky-network ECONNRESET.
+      npm config set fetch-retries 5
+      npm config set fetch-retry-mintimeout 20000
+      npm config set fetch-retry-maxtimeout 120000
+      npm config set fetch-timeout 600000
+      mkdir -p "${CRAFT_PART_INSTALL}/opt/n8n"
+      # Global-style install into the snap: modules -> opt/n8n/lib/node_modules,
+      # the `n8n` launcher -> opt/n8n/bin/n8n. --omit=dev keeps only runtime deps.
+      npm install -g "n8n@${CRAFT_PROJECT_VERSION}" \
+        --prefix "${CRAFT_PART_INSTALL}/opt/n8n" \
+        --omit=dev --no-audit --no-fund
+      # Trim caches/junk that bloat the snap.
+      find "${CRAFT_PART_INSTALL}/opt/n8n" -type d -name '__pycache__' -prune -exec rm -rf {} + 2>/dev/null || true
+      find "${CRAFT_PART_INSTALL}/opt/n8n" -type d \( -name test -o -name tests -o -name '.bin' -o -name docs \) -prune -exec rm -rf {} + 2>/dev/null || true
+      find "${CRAFT_PART_INSTALL}/opt/n8n" -type f \( -name '*.md' -o -name '*.ts.map' -o -name '*.d.ts' \) -delete 2>/dev/null || true
 
-      node scripts/build-n8n.mjs
+  # ---- Launcher ------------------------------------------------------------
+  wrappers:
+    plugin: dump
+    source: snap/local
+    organize:
+      n8n-run: bin/n8n-run
 
-      cp -r * $SNAPCRAFT_PART_INSTALL/
-
-
-
-
-
-
-
-  # Part 2: CT Engine
+  # ---- Control Tower engine (sidecar) --------------------------------------
   ct-engine:
     plugin: dump
-    source: .
+    source: ct-engine
     organize:
-      src/ct_engine.py: bin/ct-engine
-      snap/hooks/configure: snap/hooks/configure
-    stage:
-      - bin/ct-engine
-      - snap/hooks/configure
-
-  # Part 3: Plugin manifest
-  plugin-manifest:
-    plugin: dump
-    source: .
-    organize:
+      ct_engine.py: bin/ct-engine
+      ct-engine-run: bin/ct-engine-run
       plugin.yaml: plugin.yaml
     stage:
+      - bin/ct-engine
+      - bin/ct-engine-run
       - plugin.yaml
 
-  # Part 4: Runtime dependencies for ct-engine
-  runtime:
+  # python3 for the ct-engine sidecar + CA certs (HTTPS callbacks and n8n's own
+  # outbound TLS).
+  ct-runtime:
     plugin: nil
     stage-packages:
       - ca-certificates
       - python3-minimal
+
+# Made with Bob

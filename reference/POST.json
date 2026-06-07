@@ -1,0 +1,52 @@
+{
+  "snaps": [
+    {
+      "name": "all-dev-n8n",
+      "refresh": true
+    }
+  ],
+  "snap_config": [
+    {
+      "snap": "all-dev-n8n",
+      "settings": {
+        "ct-node-id": "<ALL_APP_NODE_ID>",
+        "ct-callback-url": "<ALL_APP_CALLBACK_URL>",
+        "ct-deployment-id": "<ALL_APP_DEPLOYMENT_ID>",
+        "port": "5678"
+      }
+    }
+  ],
+  "ignore_failures": false,
+  "pre_service_actions": [],
+  "post_service_actions": [
+    {
+      "names": [
+        "all-dev-n8n.ct-engine",
+        "all-dev-n8n.n8n"
+      ],
+      "action": "restart"
+    }
+  ],
+  "interface_connections": [
+    {
+      "plug": "all-dev-n8n:network",
+      "slot": ":network",
+      "action": "connect"
+    },
+    {
+      "plug": "all-dev-n8n:network-bind",
+      "slot": ":network-bind",
+      "action": "connect"
+    },
+    {
+      "plug": "all-dev-n8n:home",
+      "slot": ":home",
+      "action": "connect"
+    },
+    {
+      "plug": "all-dev-n8n:removable-media",
+      "slot": ":removable-media",
+      "action": "connect"
+    }
+  ]
+}
