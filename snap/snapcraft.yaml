@@ -38,8 +38,8 @@ source-code: https://github.com/n8n-io/n8n
 issues: https://github.com/n8n-io/n8n/issues
 contact: https://github.com/Half-Silver
 
-# amd64 only: the bundled Node tarball and several n8n native deps
-# (better-sqlite3 prebuilds) are wired for linux-x64.
+# amd64 only: the bundled Node tarball and n8n's native deps (sqlite3 +
+# @n8n/typeorm, plus isolated-vm/ssh2/etc. prebuilds) are wired for linux-x64.
 platforms:
   amd64:
 
@@ -128,8 +128,13 @@ parts:
         --prefix "${CRAFT_PART_INSTALL}/opt/n8n" \
         --omit=dev --no-audit --no-fund
       # Trim caches/junk that bloat the snap.
+      # WARNING: do NOT delete directories named test/tests/docs/.bin here.
+      # Some runtime packages keep *published* code in such dirs — e.g. langchain
+      # ships dist/agents/tests/utils.cjs, which langchain/dist/index.cjs require()s
+      # at load time. Removing it makes start.js fail to import, surfaced (very
+      # misleadingly) as: `Error: Command "start" not found` — because n8n 2.x's
+      # CommandRegistry swallows the import error before reporting the command.
       find "${CRAFT_PART_INSTALL}/opt/n8n" -type d -name '__pycache__' -prune -exec rm -rf {} + 2>/dev/null || true
-      find "${CRAFT_PART_INSTALL}/opt/n8n" -type d \( -name test -o -name tests -o -name '.bin' -o -name docs \) -prune -exec rm -rf {} + 2>/dev/null || true
       find "${CRAFT_PART_INSTALL}/opt/n8n" -type f \( -name '*.md' -o -name '*.ts.map' -o -name '*.d.ts' \) -delete 2>/dev/null || true
 
   # ---- Launcher ------------------------------------------------------------
@@ -159,5 +164,21 @@ parts:
     stage-packages:
       - ca-certificates
       - python3-minimal
+    override-prime: |
+      craftctl default
+      # The ca-certificates postinst trigger (which concatenates the trusted
+      # roots into etc/ssl/certs/ca-certificates.crt) does not run during snap
+      # staging, so that bundle ships EMPTY. The launcher points
+      # NODE_EXTRA_CA_CERTS at it, so node logs "Ignoring extra certs ... load
+      # failed" on every start. Rebuild the bundle from the staged Mozilla roots.
+      bundle="${CRAFT_PRIME}/etc/ssl/certs/ca-certificates.crt"
+      srcdir="${CRAFT_PRIME}/usr/share/ca-certificates/mozilla"
+      if [ -d "$srcdir" ] && ls "$srcdir"/*.crt >/dev/null 2>&1; then
+        install -d "${CRAFT_PRIME}/etc/ssl/certs"
+        cat "$srcdir"/*.crt > "$bundle"
+        echo "Rebuilt CA bundle: $(grep -c 'BEGIN CERT' "$bundle") roots."
+      else
+        echo "WARNING: no Mozilla CA roots staged at $srcdir; CA bundle left as-is." >&2
+      fi
 
 # Made with Bob
