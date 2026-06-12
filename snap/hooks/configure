@@ -18,8 +18,5 @@ if [ -n "$_port" ]; then
     fi
 fi
 
-if [ -x "$SNAP/bin/ct-engine-run" ]; then
-    "$SNAP/bin/ct-engine-run" hook-configure || true
-fi
 
 exit 0

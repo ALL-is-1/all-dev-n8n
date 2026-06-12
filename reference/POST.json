@@ -9,9 +9,6 @@
     {
       "snap": "all-dev-n8n",
       "settings": {
-        "ct-node-id": "<ALL_APP_NODE_ID>",
-        "ct-callback-url": "<ALL_APP_CALLBACK_URL>",
-        "ct-deployment-id": "<ALL_APP_DEPLOYMENT_ID>",
         "port": "5678"
       }
     }
@@ -21,7 +18,6 @@
   "post_service_actions": [
     {
       "names": [
-        "all-dev-n8n.ct-engine",
         "all-dev-n8n.n8n"
       ],
       "action": "restart"
