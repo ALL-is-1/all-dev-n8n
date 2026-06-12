@@ -59,19 +59,6 @@ apps:
       - home             # read/write files for the local-filesystem nodes
       - removable-media  # optional: workflows that touch external storage
 
-  # Control Tower integration sidecar. Runs alongside n8n (it does not manage
-  # it): validates/persists the config CT pushes via `snap set` and streams
-  # status callbacks to ct-callback-url. Driven by ct-engine/plugin.yaml.
-  ct-engine:
-    command: bin/ct-engine-run run
-    daemon: simple
-    install-mode: enable
-    restart-condition: always
-    plugs:
-      - network
-      - network-bind
-
-# CT Engine lifecycle hooks need network to send update/stop callbacks to
 # Control Tower under strict confinement. (configure needs no network — it only
 # persists config and restarts services via snapctl.)
 hooks:
@@ -86,10 +73,8 @@ parts:
   # ---- Bundled Node.js 22 runtime -----------------------------------------
   # core24 (Ubuntu 24.04) apt ships Node 18; n8n requires >=22.22.
   node:
-    plugin: nil
     build-packages:
       - curl
-      - ca-certificates
       - xz-utils
     override-build: |
       craftctl default
@@ -106,11 +91,9 @@ parts:
   n8n:
     after:
       - node
-    plugin: nil
     build-packages:
       - python3
       - build-essential   # node-gyp fallback for any dep without a prebuild
-      - ca-certificates
     build-environment:
       - NODE_OPTIONS: '--max-old-space-size=4096'
     override-build: |
@@ -145,34 +128,12 @@ parts:
       n8n-run: bin/n8n-run
 
   # ---- Control Tower engine (sidecar) --------------------------------------
-  ct-engine:
-    plugin: dump
-    source: ct-engine
-    organize:
-      ct_engine.py: bin/ct-engine
-      ct-engine-run: bin/ct-engine-run
-      plugin.yaml: plugin.yaml
-    stage:
-      - bin/ct-engine
-      - bin/ct-engine-run
-      - plugin.yaml
-
-  # python3 for the ct-engine sidecar + CA certs (HTTPS callbacks and n8n's own
-  # outbound TLS).
-  ct-runtime:
-    plugin: nil
     stage-packages:
-      - ca-certificates
-      - python3-minimal
     override-prime: |
       craftctl default
-      # The ca-certificates postinst trigger (which concatenates the trusted
-      # roots into etc/ssl/certs/ca-certificates.crt) does not run during snap
       # staging, so that bundle ships EMPTY. The launcher points
       # NODE_EXTRA_CA_CERTS at it, so node logs "Ignoring extra certs ... load
       # failed" on every start. Rebuild the bundle from the staged Mozilla roots.
-      bundle="${CRAFT_PRIME}/etc/ssl/certs/ca-certificates.crt"
-      srcdir="${CRAFT_PRIME}/usr/share/ca-certificates/mozilla"
       if [ -d "$srcdir" ] && ls "$srcdir"/*.crt >/dev/null 2>&1; then
         install -d "${CRAFT_PRIME}/etc/ssl/certs"
         cat "$srcdir"/*.crt > "$bundle"
