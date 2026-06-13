@@ -54,27 +54,19 @@ apps:
     install-mode: enable
     restart-condition: always
     plugs:
-      - network          # outbound HTTP from workflow nodes
-      - network-bind     # serve the editor/API/webhooks on 5678
-      - home             # read/write files for the local-filesystem nodes
-      - removable-media  # optional: workflows that touch external storage
-
-# Control Tower under strict confinement. (configure needs no network — it only
-# persists config and restarts services via snapctl.)
-hooks:
-  pre-refresh:
-    plugs: [network]
-  post-refresh:
-    plugs: [network]
-  remove:
-    plugs: [network]
+      - network
+      - network-bind
+      - home
+      - removable-media
 
 parts:
   # ---- Bundled Node.js 22 runtime -----------------------------------------
   # core24 (Ubuntu 24.04) apt ships Node 18; n8n requires >=22.22.
   node:
+    plugin: nil
     build-packages:
       - curl
+      - ca-certificates
       - xz-utils
     override-build: |
       craftctl default
@@ -91,9 +83,11 @@ parts:
   n8n:
     after:
       - node
+    plugin: nil
     build-packages:
       - python3
       - build-essential   # node-gyp fallback for any dep without a prebuild
+      - ca-certificates
     build-environment:
       - NODE_OPTIONS: '--max-old-space-size=4096'
     override-build: |
@@ -127,19 +121,3 @@ parts:
     organize:
       n8n-run: bin/n8n-run
 
-  # ---- Control Tower engine (sidecar) --------------------------------------
-    stage-packages:
-    override-prime: |
-      craftctl default
-      # staging, so that bundle ships EMPTY. The launcher points
-      # NODE_EXTRA_CA_CERTS at it, so node logs "Ignoring extra certs ... load
-      # failed" on every start. Rebuild the bundle from the staged Mozilla roots.
-      if [ -d "$srcdir" ] && ls "$srcdir"/*.crt >/dev/null 2>&1; then
-        install -d "${CRAFT_PRIME}/etc/ssl/certs"
-        cat "$srcdir"/*.crt > "$bundle"
-        echo "Rebuilt CA bundle: $(grep -c 'BEGIN CERT' "$bundle") roots."
-      else
-        echo "WARNING: no Mozilla CA roots staged at $srcdir; CA bundle left as-is." >&2
-      fi
-
-# Made with Bob
